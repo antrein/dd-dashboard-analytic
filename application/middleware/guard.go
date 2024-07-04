@@ -4,13 +4,16 @@ import (
 	"antrein/dd-dashboard-analytic/model/config"
 	"antrein/dd-dashboard-analytic/model/dto"
 	"antrein/dd-dashboard-analytic/model/entity"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
+	pb "github.com/antrein/proto-repository/pb/dd"
+
 	"github.com/gorilla/mux"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type GuardContext struct {
@@ -136,33 +139,19 @@ func AuthGuard(cfg *config.Config, handlerFunc func(g *AuthGuardContext) error) 
 			return
 		}
 
-		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer"))
-		if tokenString == "" {
-			http.Error(w, "Unauthorized - Invalid token format", http.StatusUnauthorized)
+		grpcClient, err := grpc.Dial(cfg.GRPCConfig.DashboardAuth, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+		client := pb.NewAuthServiceClient(grpcClient)
+		ctx := context.Background()
+		authResp, err := client.ValidateToken(ctx, &pb.ValidateTokenRequest{Token: authHeader})
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return []byte(cfg.Secrets.JWTSecret), nil
-		})
-
-		if err != nil || !token.Valid {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		userID, ok := claims["user_id"].(string)
-		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		if !authResp.IsValid {
+			http.Error(w, "Token invalid", http.StatusUnauthorized)
 			return
 		}
 
@@ -170,7 +159,7 @@ func AuthGuard(cfg *config.Config, handlerFunc func(g *AuthGuardContext) error) 
 			ResponseWriter: w,
 			Request:        r,
 			Claims: entity.JWTClaim{
-				UserID: userID,
+				UserID: authResp.UserId,
 			},
 		}
 

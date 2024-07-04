@@ -8,7 +8,7 @@ import (
 	"log"
 	"net/http"
 
-	pb "github.com/antrein/proto-repository/pb/bc"
+	pb "github.com/antrein/proto-repository/pb/dd"
 	"github.com/gorilla/mux"
 
 	"google.golang.org/grpc"

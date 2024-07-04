@@ -54,4 +54,5 @@ type InfraConfig struct {
 
 type GRPCConfig struct {
 	DashboardQueue string `json:"dashboard_queue"`
+	DashboardAuth  string `json:"dashboard_auth"`
 }
